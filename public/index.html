@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>PPVC Planner Dashboard — Property Point</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --primary: #1a3a5c;
+      --accent:  #e8aa14;
+      --light:   #f4f7fb;
+      --white:   #ffffff;
+      --shadow:  0 2px 12px rgba(26,58,92,.10);
+      --complete:   #27ae60;
+      --inprog:     #2980b9;
+      --notstart:   #95a5a6;
+      --delayed:    #e74c3c;
+      --border:     #dde5ef;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', -apple-system, Arial, sans-serif; background: var(--light); color: #222; min-height: 100vh; }
+
+    /* ─── Header ──────────────────────────────────────────── */
+    header {
+      background: var(--primary); color: #fff; padding: 0 32px;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 68px; box-shadow: 0 2px 8px rgba(0,0,0,.18);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .logo-block { display: flex; align-items: center; gap: 14px; }
+    .logo-mark {
+      width: 42px; height: 42px; background: var(--accent); border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 18px; color: var(--primary); letter-spacing: -1px;
+    }
+    .logo-text h1 { font-size: 17px; font-weight: 700; letter-spacing: .3px; }
+    .logo-text p  { font-size: 11px; opacity: .7; margin-top: 1px; }
+    .header-right { display: flex; align-items: center; gap: 14px; }
+    #ts { font-size: 12px; opacity: .7; }
+
+    #refresh-btn {
+      background: var(--accent); color: var(--primary); border: none;
+      border-radius: 8px; padding: 9px 20px; font-size: 13px; font-weight: 700;
+      cursor: pointer; display: flex; align-items: center; gap: 8px; transition: opacity .2s;
+    }
+    #refresh-btn:hover { opacity: .88; }
+    #refresh-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .spin { animation: spin .8s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Page ─────────────────────────────────────────────── */
+    .page { max-width: 1320px; margin: 0 auto; padding: 28px 24px 48px; }
+
+    /* ─── KPI Cards ───────────────────────────────────────── */
+    .kpi-row {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+      gap: 16px; margin-bottom: 28px;
+    }
+    .kpi-card {
+      background: #fff; border-radius: 12px; padding: 20px 22px;
+      box-shadow: var(--shadow); border-top: 4px solid transparent; transition: transform .15s;
+    }
+    .kpi-card:hover { transform: translateY(-2px); }
+    .kpi-card.total { border-color: var(--primary); }
+    .kpi-card.comp  { border-color: var(--complete); }
+    .kpi-card.inp   { border-color: var(--inprog); }
+    .kpi-card.del   { border-color: var(--delayed); }
+    .kpi-card.ns    { border-color: var(--notstart); }
+    .kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: #666; margin-bottom: 6px; }
+    .kpi-value { font-size: 32px; font-weight: 700; color: var(--primary); line-height: 1; }
+    .kpi-sub   { font-size: 11px; color: #999; margin-top: 4px; }
+
+    /* ─── Charts Row ──────────────────────────────────────── */
+    .charts-row { display: grid; grid-template-columns: 1fr 1.6fr; gap: 20px; margin-bottom: 28px; }
+    @media (max-width: 768px) { .charts-row { grid-template-columns: 1fr; } }
+    .card { background: #fff; border-radius: 12px; padding: 22px 24px; box-shadow: var(--shadow); }
+    .card-title {
+      font-size: 14px; font-weight: 700; color: var(--primary); margin-bottom: 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .card-title::before { content: ''; display: block; width: 4px; height: 18px; background: var(--accent); border-radius: 2px; }
+    .chart-wrap { position: relative; height: 220px; }
+
+    /* ─── Gantt Chart ─────────────────────────────────────── */
+    .gantt-card { margin-bottom: 28px; }
+    .gantt-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .gantt-scroll { overflow-x: auto; padding-bottom: 8px; }
+    .gantt-table { border-collapse: collapse; width: 100%; min-width: 900px; }
+    .gantt-table th { font-size: 10px; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; padding: 6px 4px; text-align: center; border-bottom: 1px solid var(--border); }
+    .gantt-table th.label-col { text-align: left; padding-left: 12px; min-width: 240px; position: sticky; left: 0; background: #fff; z-index: 2; }
+    .gantt-row td { padding: 3px 0; height: 32px; vertical-align: middle; }
+    .gantt-row td.label-cell {
+      font-size: 12px; font-weight: 600; color: var(--primary); white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; max-width: 240px; padding-left: 12px;
+      position: sticky; left: 0; background: #fff; z-index: 1;
+    }
+    .gantt-row:hover td { background: #fafcff; }
+    .gantt-row:hover td.label-cell { background: #fafcff; }
+    .gantt-cell { position: relative; min-width: 28px; }
+    .gantt-bar {
+      height: 18px; border-radius: 9px; position: absolute; top: 50%; transform: translateY(-50%);
+      min-width: 18px; cursor: default; transition: opacity .15s;
+    }
+    .gantt-bar:hover { opacity: .8; }
+    .gantt-bar.status-complete   { background: var(--complete); }
+    .gantt-bar.status-inprogress { background: var(--inprog); }
+    .gantt-bar.status-notstarted { background: var(--notstart); }
+    .gantt-bar.status-delayed    { background: var(--delayed); }
+
+    .gantt-tooltip {
+      display: none; position: fixed; z-index: 200;
+      background: #fff; border: 1px solid var(--border); border-radius: 10px;
+      padding: 14px 18px; box-shadow: 0 4px 20px rgba(0,0,0,.15);
+      font-size: 12px; max-width: 320px; pointer-events: none;
+    }
+    .gantt-tooltip.show { display: block; }
+    .gantt-tooltip strong { color: var(--primary); font-size: 13px; display: block; margin-bottom: 6px; }
+    .gantt-tooltip .tt-row { display: flex; gap: 6px; margin-bottom: 3px; }
+    .gantt-tooltip .tt-label { color: #888; min-width: 60px; }
+    .gantt-month-header { font-size: 11px; font-weight: 700; color: var(--primary); background: #eef2f8; }
+
+    /* ─── Tabs & Table ────────────────────────────────────── */
+    .month-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tab-btn {
+      background: var(--light); border: 1.5px solid var(--border); border-radius: 20px;
+      padding: 6px 16px; font-size: 12px; font-weight: 600; cursor: pointer;
+      color: #555; transition: all .15s;
+    }
+    .tab-btn:hover { border-color: var(--primary); color: var(--primary); }
+    .tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+    .table-card { background: #fff; border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+    .table-header {
+      padding: 18px 24px 14px; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 10px; border-bottom: 1px solid var(--border);
+    }
+    .table-title { font-size: 14px; font-weight: 700; color: var(--primary); }
+    #search-box {
+      border: 1.5px solid var(--border); border-radius: 7px;
+      padding: 7px 14px; font-size: 13px; width: 220px;
+    }
+    #search-box:focus { outline: none; border-color: var(--primary); }
+
+    table.data-table { width: 100%; border-collapse: collapse; }
+    table.data-table thead { background: #f0f4fa; }
+    table.data-table th {
+      text-align: left; padding: 11px 16px; font-size: 11px;
+      text-transform: uppercase; letter-spacing: .5px; color: #555;
+      font-weight: 700; white-space: nowrap;
+    }
+    table.data-table td { padding: 11px 16px; font-size: 13px; border-bottom: 1px solid #f0f4fa; }
+    table.data-table tr:last-child td { border-bottom: none; }
+    table.data-table tr:hover td { background: #fafcff; }
+
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .b-comp { background: #d5f5e3; color: #1e8449; }
+    .b-inp  { background: #d6eaf8; color: #1a5276; }
+    .b-ns   { background: #eaecee; color: #555; }
+    .b-del  { background: #fce8e6; color: #922b21; }
+    .m-tag  { font-size: 11px; background: #eef1f7; color: var(--primary); padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+    .empty  { text-align: center; padding: 40px; color: #999; }
+
+    /* ─── Status bar ──────────────────────────────────────── */
+    #status-msg { text-align: center; padding: 60px 20px; color: #888; }
+    #status-msg .icon { font-size: 36px; margin-bottom: 10px; }
+    .error-msg { color: #c0392b !important; }
+    .hidden { display: none !important; }
+
+    /* ─── Legend ───────────────────────────────────────────── */
+    .gantt-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #555; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 6px; }
+
+    footer {
+      text-align: center; padding: 20px; font-size: 11px; color: #aaa;
+      border-top: 1px solid var(--border); margin-top: 40px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo-block">
+    <div class="logo-mark">PP</div>
+    <div class="logo-text">
+      <h1>Property Point — PPVC Planner</h1>
+      <p>Marketing Events &amp; Project Dashboard · 2026</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <span id="ts">Loading…</span>
+    <button id="refresh-btn" onclick="loadData()">
+      <span id="refresh-icon">↻</span> Refresh Data
+    </button>
+  </div>
+</header>
+
+<div class="page">
+
+  <!-- Status message (shown while loading) -->
+  <div id="status-msg">
+    <div class="icon">⏳</div>
+    <p>Connecting to Smartsheet…</p>
+  </div>
+
+  <!-- Main content (hidden until data loads) -->
+  <div id="main-content" class="hidden">
+
+    <!-- KPI Cards -->
+    <div class="kpi-row">
+      <div class="kpi-card total"><div class="kpi-label">Total Events</div><div class="kpi-value" id="k-total">0</div><div class="kpi-sub">across all months</div></div>
+      <div class="kpi-card comp"><div class="kpi-label">Complete</div><div class="kpi-value" id="k-comp">0</div><div class="kpi-sub" id="k-comp-p"></div></div>
+      <div class="kpi-card inp"><div class="kpi-label">In Progress</div><div class="kpi-value" id="k-inp">0</div><div class="kpi-sub" id="k-inp-p"></div></div>
+      <div class="kpi-card del"><div class="kpi-label">Delayed</div><div class="kpi-value" id="k-del">0</div><div class="kpi-sub" id="k-del-p"></div></div>
+      <div class="kpi-card ns"><div class="kpi-label">Not Started</div><div class="kpi-value" id="k-ns">0</div><div class="kpi-sub" id="k-ns-p"></div></div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-row">
+      <div class="card"><div class="card-title">Status Breakdown</div><div class="chart-wrap"><canvas id="donut"></canvas></div></div>
+      <div class="card"><div class="card-title">Events by Month</div><div class="chart-wrap"><canvas id="bar"></canvas></div></div>
+    </div>
+
+    <!-- Gantt Chart -->
+    <div class="card gantt-card">
+      <div class="card-title">Gantt Timeline</div>
+      <div class="gantt-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--complete)"></div> Complete</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--inprog)"></div> In Progress</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--notstart)"></div> Not Started</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--delayed)"></div> Delayed</div>
+      </div>
+      <div class="gantt-controls">
+        <div class="month-tabs" id="gantt-tabs"></div>
+      </div>
+      <div class="gantt-scroll" id="gantt-scroll"></div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">All Projects &amp; Events</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <div class="month-tabs" id="table-tabs"></div>
+          <input type="text" id="search-box" placeholder="Search events…" oninput="renderTable()"/>
+        </div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead><tr>
+            <th>Month</th><th>Project / Event</th><th>Requirements</th>
+            <th>Status</th><th>Owner</th><th>Assigned To</th>
+            <th>Start Date</th><th>End Date</th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="gantt-tooltip" id="tooltip"></div>
+
+<footer>Property Point · PPVC Marketing Planner 2026 · Powered by Smartsheet API</footer>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────
+const MONTH_ORDER = ['January','February','March','April','May','June'];
+const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun'];
+
+// ── State ─────────────────────────────────────────────────────────────
+let allRows = [];
+let tableMonth = 'All';
+let ganttMonth = 'All';
+let donutChart = null, barChart = null;
+
+// ── Load data from serverless API ─────────────────────────────────────
+async function loadData() {
+  const btn  = document.getElementById('refresh-btn');
+  const icon = document.getElementById('refresh-icon');
+  btn.disabled = true;
+  icon.className = 'spin';
+  showStatus('⏳', 'Fetching live data from Smartsheet…');
+
+  try {
+    const resp = await fetch('/api/sheets');
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    allRows = data.rows || [];
+
+    const at = new Date(data.fetchedAt);
+    document.getElementById('ts').textContent = 'Updated: ' + at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    document.getElementById('status-msg').classList.add('hidden');
+    document.getElementById('main-content').classList.remove('hidden');
+    buildAll();
+  } catch (err) {
+    showStatus('❌', err.message, true);
+  } finally {
+    btn.disabled = false;
+    icon.className = '';
+  }
+}
+
+function showStatus(icon, msg, isError) {
+  const el = document.getElementById('status-msg');
+  el.classList.remove('hidden');
+  document.getElementById('main-content').classList.add('hidden');
+  el.innerHTML = `<div class="icon">${icon}</div><p class="${isError ? 'error-msg' : ''}">${msg}</p>`;
+}
+
+// ── Build everything ──────────────────────────────────────────────────
+function buildAll() {
+  updateKPIs();
+  updateCharts();
+  buildTabs('gantt-tabs', ganttMonth, m => { ganttMonth = m; buildTabs('gantt-tabs', ganttMonth, arguments.callee); renderGantt(); });
+  buildTabs('table-tabs', tableMonth, m => { tableMonth = m; buildTabs('table-tabs', tableMonth, setTableMonth); renderTable(); });
+  renderGantt();
+  renderTable();
+}
+
+function setTableMonth(m) { tableMonth = m; buildTabs('table-tabs', tableMonth, setTableMonth); renderTable(); }
+
+// ── KPIs ──────────────────────────────────────────────────────────────
+function updateKPIs() {
+  const t = allRows.length;
+  const c = cnt('Complete'), i = cnt('In Progress'), d = cnt('Delayed'), n = cnt('Not Started');
+  const pct = (v) => t ? Math.round(v / t * 100) + '% of total' : '';
+  el('k-total', t); el('k-comp', c); el('k-inp', i); el('k-del', d); el('k-ns', n);
+  el('k-comp-p', pct(c)); el('k-inp-p', pct(i)); el('k-del-p', pct(d)); el('k-ns-p', pct(n));
+}
+function cnt(s) { return allRows.filter(r => r.status === s).length; }
+function el(id, v) { document.getElementById(id).textContent = v; }
+
+// ── Charts ────────────────────────────────────────────────────────────
+function updateCharts() {
+  const statuses = ['Complete','In Progress','Not Started','Delayed'];
+  const statusData = statuses.map(s => cnt(s));
+  const colors = ['#27ae60','#2980b9','#95a5a6','#e74c3c'];
+
+  if (donutChart) donutChart.destroy();
+  donutChart = new Chart(document.getElementById('donut'), {
+    type: 'doughnut',
+    data: { labels: statuses, datasets: [{ data: statusData, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '62%',
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 12 } } } }
+  });
+
+  const mdata = MONTH_ORDER.map(mo => {
+    const short = mo.slice(0, 3);
+    const rows = allRows.filter(r => r.month === mo.split(' ')[0] || r.month === mo);
+    return { month: short,
+      c: rows.filter(r => r.status === 'Complete').length,
+      i: rows.filter(r => r.status === 'In Progress').length,
+      n: rows.filter(r => r.status === 'Not Started').length,
+      d: rows.filter(r => r.status === 'Delayed').length };
+  });
+  if (barChart) barChart.destroy();
+  barChart = new Chart(document.getElementById('bar'), {
+    type: 'bar',
+    data: { labels: mdata.map(m => m.month), datasets: [
+      { label: 'Complete',    data: mdata.map(m => m.c), backgroundColor: '#27ae60' },
+      { label: 'In Progress', data: mdata.map(m => m.i), backgroundColor: '#2980b9' },
+      { label: 'Not Started', data: mdata.map(m => m.n), backgroundColor: '#bdc3c7' },
+      { label: 'Delayed',     data: mdata.map(m => m.d), backgroundColor: '#e74c3c' },
+    ]},
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 10 } } },
+      scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+}
+
+// ── Month Tab builder ─────────────────────────────────────────────────
+function buildTabs(containerId, active, onClick) {
+  const months = ['All', ...MONTH_ORDER.filter(m => allRows.some(r => r.month === m))];
+  const c = document.getElementById(containerId);
+  c.innerHTML = '';
+  months.forEach(m => {
+    const btn = document.createElement('button');
+    btn.className = 'tab-btn' + (m === active ? ' active' : '');
+    btn.textContent = m === 'All' ? 'All' : m.slice(0, 3);
+    btn.onclick = () => onClick(m);
+    c.appendChild(btn);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  GANTT CHART
+// ══════════════════════════════════════════════════════════════════════
+function renderGantt() {
+  let rows = allRows.filter(r => r.startDate && r.startDate !== 'None');
+  if (ganttMonth !== 'All') rows = rows.filter(r => r.month === ganttMonth);
+  if (!rows.length) { document.getElementById('gantt-scroll').innerHTML = '<div class="empty">No events with dates to display.</div>'; return; }
+
+  // Calculate date range
+  const dates = [];
+  rows.forEach(r => {
+    const s = parseDate(r.startDate);
+    const e = parseDate(r.endDate) || s;
+    if (s) { dates.push(s); if (e) dates.push(e); }
+  });
+  if (!dates.length) { document.getElementById('gantt-scroll').innerHTML = '<div class="empty">No valid dates found.</div>'; return; }
+
+  let minDate = new Date(Math.min(...dates));
+  let maxDate = new Date(Math.max(...dates));
+
+  // Pad by 3 days each side and snap to weeks
+  minDate.setDate(minDate.getDate() - 3);
+  maxDate.setDate(maxDate.getDate() + 3);
+
+  // Build day columns
+  const days = [];
+  const d = new Date(minDate);
+  while (d <= maxDate) { days.push(new Date(d)); d.setDate(d.getDate() + 1); }
+
+  // Group days by month for header
+  const monthGroups = [];
+  let currentMonth = -1;
+  days.forEach((day, idx) => {
+    const m = day.getMonth();
+    if (m !== currentMonth) { monthGroups.push({ month: day, startIdx: idx, span: 1 }); currentMonth = m; }
+    else { monthGroups[monthGroups.length - 1].span++; }
+  });
+
+  const MO_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  // Build HTML
+  let html = '<table class="gantt-table"><thead>';
+
+  // Month header row
+  html += '<tr><th class="label-col">Activity</th>';
+  monthGroups.forEach(g => {
+    html += `<th colspan="${g.span}" class="gantt-month-header">${MO_NAMES[g.month.getMonth()]} ${g.month.getFullYear()}</th>`;
+  });
+  html += '</tr>';
+
+  // Day header row
+  html += '<tr><th class="label-col"></th>';
+  days.forEach(day => {
+    const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+    html += `<th style="font-size:9px;min-width:24px;${isWeekend ? 'color:#ccc;' : ''}">${day.getDate()}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  // Sort rows by start date
+  rows.sort((a, b) => (parseDate(a.startDate) || 0) - (parseDate(b.startDate) || 0));
+
+  rows.forEach(r => {
+    const start = parseDate(r.startDate);
+    const end   = parseDate(r.endDate) || start;
+    if (!start) return;
+
+    const statusClass = statusToCss(r.status);
+
+    html += '<tr class="gantt-row">';
+    html += `<td class="label-cell" title="${esc(r.eventName)}">${esc(r.eventName)}</td>`;
+
+    // Find start/end columns
+    const startIdx = dayIndex(days, start);
+    const endIdx   = dayIndex(days, end);
+    const barStart = Math.max(0, startIdx);
+    const barEnd   = Math.min(days.length - 1, endIdx);
+
+    days.forEach((day, idx) => {
+      const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+      let cellStyle = isWeekend ? 'background:#fafafa;' : '';
+      html += `<td class="gantt-cell" style="${cellStyle}">`;
+      if (idx === barStart) {
+        const span = barEnd - barStart + 1;
+        const widthPx = span * 24; // 24px per day column
+        html += `<div class="gantt-bar ${statusClass}"
+          style="width:${widthPx}px;left:0;"
+          data-event="${esc(r.eventName)}"
+          data-status="${esc(r.status)}"
+          data-owner="${esc(r.owner)}"
+          data-assigned="${esc(r.assignedTo)}"
+          data-start="${fmtDate(start)}"
+          data-end="${fmtDate(end)}"
+          onmouseenter="showTip(event,this)" onmouseleave="hideTip()"></div>`;
+      }
+      html += '</td>';
+    });
+
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  document.getElementById('gantt-scroll').innerHTML = html;
+}
+
+function parseDate(s) {
+  if (!s || s === 'None' || s === 'nan' || s === 'TBC') return null;
+  const m = String(s).match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  return null;
+}
+
+function dayIndex(days, date) {
+  const t = date.getTime();
+  for (let i = 0; i < days.length; i++) {
+    if (days[i].getFullYear() === date.getFullYear() && days[i].getMonth() === date.getMonth() && days[i].getDate() === date.getDate()) return i;
+  }
+  // If exact match not found, find closest
+  if (t <= days[0].getTime()) return 0;
+  if (t >= days[days.length - 1].getTime()) return days.length - 1;
+  return 0;
+}
+
+function statusToCss(s) {
+  const map = { 'Complete': 'status-complete', 'In Progress': 'status-inprogress', 'Not Started': 'status-notstarted', 'Delayed': 'status-delayed' };
+  return map[s] || 'status-notstarted';
+}
+
+// ── Gantt Tooltip ─────────────────────────────────────────────────────
+function showTip(evt, el) {
+  const tip = document.getElementById('tooltip');
+  tip.innerHTML = `
+    <strong>${el.dataset.event}</strong>
+    <div class="tt-row"><span class="tt-label">Status</span> ${el.dataset.status}</div>
+    <div class="tt-row"><span class="tt-label">Owner</span> ${el.dataset.owner}</div>
+    <div class="tt-row"><span class="tt-label">Assigned</span> ${el.dataset.assigned}</div>
+    <div class="tt-row"><span class="tt-label">Start</span> ${el.dataset.start}</div>
+    <div class="tt-row"><span class="tt-label">End</span> ${el.dataset.end}</div>`;
+  tip.classList.add('show');
+  const x = Math.min(evt.clientX + 12, window.innerWidth - 340);
+  const y = Math.min(evt.clientY + 12, window.innerHeight - 180);
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
+}
+function hideTip() { document.getElementById('tooltip').classList.remove('show'); }
+
+// ── Table ─────────────────────────────────────────────────────────────
+function renderTable() {
+  const q = document.getElementById('search-box').value.toLowerCase();
+  let rows = allRows;
+  if (tableMonth !== 'All') rows = rows.filter(r => r.month === tableMonth);
+  if (q) rows = rows.filter(r =>
+    r.eventName.toLowerCase().includes(q) || r.owner.toLowerCase().includes(q) ||
+    r.assignedTo.toLowerCase().includes(q) || r.requirements.toLowerCase().includes(q));
+
+  const tb = document.getElementById('tbody');
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">No matching events found.</td></tr>'; return; }
+  tb.innerHTML = rows.map(r => `<tr>
+    <td><span class="m-tag">${esc(r.month)}</span></td>
+    <td><strong>${esc(r.eventName)}</strong></td>
+    <td style="color:#555;max-width:200px;">${esc(r.requirements)}</td>
+    <td>${badge(r.status)}</td>
+    <td>${esc(r.owner)}</td>
+    <td>${esc(r.assignedTo)}</td>
+    <td>${fmtDate(parseDate(r.startDate))}</td>
+    <td>${fmtDate(parseDate(r.endDate))}</td>
+  </tr>`).join('');
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────
+function esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function fmtDate(d) {
+  if (!d) return '<span style="color:#ccc;">—</span>';
+  const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${d.getDate()} ${mo[d.getMonth()]} ${d.getFullYear()}`;
+}
+function badge(s) {
+  const map = { 'Complete': 'comp', 'In Progress': 'inp', 'Not Started': 'ns', 'Delayed': 'del' };
+  return `<span class="badge b-${map[s] || 'ns'}">${esc(s || '—')}</span>`;
+}
+
+// ── Auto-load on page open ────────────────────────────────────────────
+loadData();
+</script>
+</body>
+</html>
