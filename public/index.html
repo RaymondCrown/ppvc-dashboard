@@ -73,6 +73,7 @@
 
     /* ─── Charts Row ──────────────────────────────────────── */
     .charts-row { display: grid; grid-template-columns: 1fr 1.6fr; gap: 20px; margin-bottom: 28px; }
+    .charts-row-full { display: grid; grid-template-columns: 1fr; gap: 20px; margin-bottom: 28px; }
     @media (max-width: 768px) { .charts-row { grid-template-columns: 1fr; } }
     .card { background: #fff; border-radius: 12px; padding: 22px 24px; box-shadow: var(--shadow); }
     .card-title {
@@ -222,6 +223,11 @@
       <div class="card"><div class="card-title">Events by Month</div><div class="chart-wrap"><canvas id="bar"></canvas></div></div>
     </div>
 
+    <!-- Assigned To Chart -->
+    <div class="charts-row-full">
+      <div class="card"><div class="card-title">Events by Assigned To</div><div class="chart-wrap" style="height:auto;min-height:180px;"><canvas id="assignedBar"></canvas></div></div>
+    </div>
+
     <!-- Gantt Chart -->
     <div class="card gantt-card">
       <div class="card-title">Gantt Timeline</div>
@@ -274,7 +280,7 @@ const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun'];
 let allRows = [];
 let tableMonth = 'All';
 let ganttMonth = 'All';
-let donutChart = null, barChart = null;
+let donutChart = null, barChart = null, assignedChart = null;
 
 // ── Load data from serverless API ─────────────────────────────────────
 async function loadData() {
@@ -318,6 +324,7 @@ function showStatus(icon, msg, isError) {
 function buildAll() {
   updateKPIs();
   updateCharts();
+  updateAssignedChart();
   buildTabs('gantt-tabs', ganttMonth, m => { ganttMonth = m; buildTabs('gantt-tabs', ganttMonth, arguments.callee); renderGantt(); });
   buildTabs('table-tabs', tableMonth, m => { tableMonth = m; buildTabs('table-tabs', tableMonth, setTableMonth); renderTable(); });
   renderGantt();
@@ -372,6 +379,72 @@ function updateCharts() {
     options: { responsive: true, maintainAspectRatio: false,
       plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 10 } } },
       scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+}
+
+// ── Assigned To Chart ─────────────────────────────────────────────────
+function updateAssignedChart() {
+  // Count events per assignee, split by status
+  const assignees = {};
+  allRows.forEach(r => {
+    const name = (r.assignedTo || '').trim();
+    if (!name) return;
+    if (!assignees[name]) assignees[name] = { Complete: 0, 'In Progress': 0, 'Not Started': 0, Delayed: 0 };
+    if (assignees[name][r.status] !== undefined) assignees[name][r.status]++;
+  });
+
+  // Sort by total events descending
+  const sorted = Object.entries(assignees).sort((a, b) => {
+    const totalA = Object.values(a[1]).reduce((s, v) => s + v, 0);
+    const totalB = Object.values(b[1]).reduce((s, v) => s + v, 0);
+    return totalB - totalA;
+  });
+
+  const labels = sorted.map(s => s[0]);
+  const compData = sorted.map(s => s[1]['Complete']);
+  const ipData   = sorted.map(s => s[1]['In Progress']);
+  const nsData   = sorted.map(s => s[1]['Not Started']);
+  const delData  = sorted.map(s => s[1]['Delayed']);
+
+  // Dynamic height: 36px per person, minimum 180px
+  const chartHeight = Math.max(180, labels.length * 36 + 60);
+  const wrap = document.getElementById('assignedBar').parentElement;
+  wrap.style.height = chartHeight + 'px';
+
+  if (assignedChart) assignedChart.destroy();
+  assignedChart = new Chart(document.getElementById('assignedBar'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'Complete',    data: compData, backgroundColor: '#27ae60' },
+        { label: 'In Progress', data: ipData,   backgroundColor: '#2980b9' },
+        { label: 'Not Started', data: nsData,   backgroundColor: '#bdc3c7' },
+        { label: 'Delayed',     data: delData,  backgroundColor: '#e74c3c' },
+      ]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 10 } },
+        tooltip: {
+          callbacks: {
+            afterBody: function(items) {
+              const name = items[0].label;
+              const person = assignees[name];
+              const total = Object.values(person).reduce((s, v) => s + v, 0);
+              return 'Total: ' + total + ' events';
+            }
+          }
+        }
+      },
+      scales: {
+        x: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#f0f4fa' } },
+        y: { stacked: true, grid: { display: false }, ticks: { font: { size: 12, weight: '600' }, color: '#1a3a5c' } }
+      }
+    }
   });
 }
 
